@@ -1,0 +1,58 @@
+{
+    "name": "mepsd/laravel-google-chat-logger",
+    "description": "Send Laravel application logs to Google Chat with rich formatting, emoji support, and context data",
+    "keywords": [
+        "laravel",
+        "logging",
+        "google-chat",
+        "webhook",
+        "monolog",
+        "notifications",
+        "logger"
+    ],
+    "type": "library",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "YourName\\LaravelGoogleChatLogger\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "YourName\\LaravelGoogleChatLogger\\Tests\\": "tests"
+        }
+    },
+    "authors": [
+        {
+            "name": "Paras Suthar Darji",
+            "email": "parassuthardarji@gmail.com"
+        }
+    ],
+    "require": {
+        "php": "^8.1",
+        "illuminate/support": "^10.0|^11.0",
+        "monolog/monolog": "^3.0",
+        "guzzlehttp/guzzle": "^7.5"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^8.0|^9.0",
+        "phpunit/phpunit": "^10.0",
+        "mockery/mockery": "^1.5"
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Mepsd\\LaravelGoogleChatLogger\\GoogleChatLoggerServiceProvider"
+            ]
+        }
+    },
+    "scripts": {
+        "test": "vendor/bin/phpunit",
+        "test-coverage": "vendor/bin/phpunit --coverage-html coverage"
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}
