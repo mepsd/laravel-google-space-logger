@@ -14,12 +14,12 @@
     "license": "MIT",
     "autoload": {
         "psr-4": {
-            "YourName\\LaravelGoogleChatLogger\\": "src/"
+            "Mepsd\\LaravelGoogleChatLogger\\": "src/"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "YourName\\LaravelGoogleChatLogger\\Tests\\": "tests"
+            "Mepsd\\LaravelGoogleChatLogger\\Tests\\": "tests"
         }
     },
     "authors": [
