@@ -15,70 +15,41 @@ class GoogleChatHandler extends AbstractProcessingHandler
     public function __construct(
         string $webhookUrl,
         array $config = [],
-        Level|int $level = Level::Debug,
-        bool $bubble = true
+        Level|int $level = Level::Debug
     ) {
         $this->webhookUrl = $webhookUrl;
         $this->config = array_merge([
-            'thread_key' => null,
-            'includeStackTrace' => true,
-            'includeSqlQueries' => false,
-            'includeRequestData' => true,
-            'maxContextDepth' => 3,
             'timeout' => 5,
             'retries' => 2,
-            'backoff' => false,
         ], $config);
 
         if (is_int($level)) {
             $level = Level::fromValue($level);
         }
 
-        parent::__construct($level, $bubble);
+        parent::__construct($level);
     }
 
     protected function write(LogRecord $record): void
     {
-        $message = $this->formatMessage($record);
-        $payload = ['text' => $message];
+        // Prepare the message
+        $text = $this->formatMessage($record);
 
-        if ($this->config['thread_key']) {
-            $payload['thread'] = ['name' => $this->config['thread_key']];
+        // Prepare payload
+        $payload = ['text' => $text];
+
+        // Add thread if provided
+        if (!empty($record->context['thread_key'])) {
+            $payload['thread'] = [
+                'threadKey' => $record->context['thread_key']
+            ];
         }
 
-        $this->sendWithRetry($payload);
-    }
-
-    protected function sendWithRetry(array $payload, int $attempt = 1): void
-    {
+        // Send the request
         try {
-            $response = Http::timeout($this->config['timeout'])
-                ->post($this->webhookUrl, $payload);
-                echo $response->status();
-
-            if (!$response->successful()) {
-                if ($attempt < $this->config['retries']) {
-                    // Apply backoff if enabled
-                    if ($this->config['backoff']) {
-                        $sleepTime = min(pow(2, $attempt - 1), 10);
-                        sleep($sleepTime);
-                    }
-
-                    // Make next attempt
-                    $this->sendWithRetry($payload, $attempt + 1);
-                }
-            }
+            $this->sendWithRetry($payload);
         } catch (\Exception $e) {
-            if ($attempt < $this->config['retries']) {
-                // Apply backoff if enabled
-                if ($this->config['backoff']) {
-                    $sleepTime = min(pow(2, $attempt - 1), 10);
-                    sleep($sleepTime);
-                }
-
-                // Make next attempt
-                $this->sendWithRetry($payload, $attempt + 1);
-            }
+            error_log("Failed to send to Google Chat: " . $e->getMessage());
         }
     }
 
@@ -87,6 +58,7 @@ class GoogleChatHandler extends AbstractProcessingHandler
         $emoji = $this->getEmoji($record->level->name);
         $environment = app()->environment();
 
+        // Start with basic message format
         $message = sprintf(
             "*[%s]* %s *%s*\n```\n%s",
             $environment,
@@ -95,15 +67,56 @@ class GoogleChatHandler extends AbstractProcessingHandler
             $record->message
         );
 
-        if (!empty($record->context)) {
-            $context = $this->processContext($record->context);
-            $message .= "\n\nContext:\n";
-            $message .= json_encode($context, JSON_PRETTY_PRINT);
+        // Format exception if present
+        if (
+            isset($record->context['exception']) &&
+            $record->context['exception'] instanceof \Throwable
+        ) {
+            $exception = $record->context['exception'];
+            $message .= "\n\nException Details:";
+            $message .= "\nMessage: " . $exception->getMessage();
+            $message .= "\nFile: " . $exception->getFile() . ":" . $exception->getLine();
+        }
+
+        // Add other context (excluding exception and thread_key)
+        $context = $record->context;
+        unset($context['exception'], $context['thread_key']);
+
+        if (!empty($context)) {
+            $message .= "\n\nContext:\n" . json_encode($context, JSON_PRETTY_PRINT);
         }
 
         $message .= "\n```";
 
         return $message;
+    }
+
+    protected function sendWithRetry(array $payload, int $attempt = 1)
+    {
+        $url = $this->webhookUrl;
+        if (str_contains($url, '?')) {
+            $url .= '&messageReplyOption=REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD';
+        } else {
+            $url .= '?messageReplyOption=REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD';
+        }
+
+        try {
+            $response = Http::timeout($this->config['timeout'])
+                ->post($url, $payload);
+
+            if (!$response->successful() && $attempt < $this->config['retries']) {
+                usleep(100000); // 100ms delay
+                return $this->sendWithRetry($payload, $attempt + 1);
+            }
+
+            return $response;
+        } catch (\Exception $e) {
+            if ($attempt < $this->config['retries']) {
+                usleep(100000); // 100ms delay
+                return $this->sendWithRetry($payload, $attempt + 1);
+            }
+            throw $e;
+        }
     }
 
     protected function getEmoji(string $level): string
@@ -113,43 +126,11 @@ class GoogleChatHandler extends AbstractProcessingHandler
             'alert'     => '⚠️',
             'critical'  => '🔥',
             'error'     => '❌',
-            'warning'   => '⚠️',
-            'notice'    => '📝',
-            'info'      => 'ℹ️',
-            'debug'     => '🐛',
-            default     => '📋'
+            'warning'  => '⚠️',
+            'notice'   => '📝',
+            'info'     => 'ℹ️',
+            'debug'    => '🐛',
+            default    => '📋'
         };
-    }
-
-    protected function processContext(array $context, int $depth = 0): array
-    {
-        if ($depth >= $this->config['maxContextDepth']) {
-            return ['[Max Depth Reached]'];
-        }
-
-        $processed = [];
-        foreach ($context as $key => $value) {
-            if (is_array($value)) {
-                $processed[$key] = $this->processContext($value, $depth + 1);
-            } elseif (is_object($value)) {
-                if ($value instanceof \Throwable) {
-                    $processed[$key] = [
-                        'class' => get_class($value),
-                        'message' => $value->getMessage(),
-                        'code' => $value->getCode(),
-                        'file' => $value->getFile(),
-                        'line' => $value->getLine()
-                    ];
-                } else {
-                    $processed[$key] = method_exists($value, 'toArray')
-                        ? $value->toArray()
-                        : get_object_vars($value);
-                }
-            } else {
-                $processed[$key] = $value;
-            }
-        }
-
-        return $processed;
     }
 }

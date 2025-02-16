@@ -11,26 +11,30 @@ class GoogleChatLogger
     {
         $logger = new Logger('google_chat');
 
+        // Parse level
         $level = $this->parseLevel($config['level'] ?? 'debug');
 
-        // Extract handler configuration
+        // Build handler config
         $handlerConfig = [
-            'retries' => $config['retries'] ?? 2,
             'timeout' => $config['timeout'] ?? 5,
-            'thread_key' => $config['thread_key'] ?? null,
-            'includeStackTrace' => $config['includeStackTrace'] ?? true,
-            'includeSqlQueries' => $config['includeSqlQueries'] ?? false,
-            'includeRequestData' => $config['includeRequestData'] ?? true,
-            'maxContextDepth' => $config['maxContextDepth'] ?? 3,
-            'backoff' => $config['backoff'] ?? false,
+            'retries' => $config['retries'] ?? 2,
+            'thread_key' => $config['thread_key'] ?? null, // Default thread key if set
+            'thread_types' => $config['thread_types'] ?? [
+                'user' => 'user-{id}',
+                'order' => 'order-{id}',
+                'deployment' => 'deployment-{date}',
+                'error' => 'error-{hash}',
+            ],
         ];
 
-        $logger->pushHandler(new GoogleChatHandler(
+        // Create and push handler
+        $handler = new GoogleChatHandler(
             $config['url'],
-            $handlerConfig,  // Pass the extracted config
-            $level,
-            $config['bubble'] ?? true
-        ));
+            $handlerConfig,
+            $level
+        );
+
+        $logger->pushHandler($handler);
 
         return $logger;
     }
