@@ -94,10 +94,12 @@ class GoogleChatHandler extends AbstractProcessingHandler
     protected function sendWithRetry(array $payload, int $attempt = 1)
     {
         $url = $this->webhookUrl;
-        if (str_contains($url, '?')) {
-            $url .= '&messageReplyOption=REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD';
-        } else {
-            $url .= '?messageReplyOption=REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD';
+        if (!empty($payload['thread'])) {
+            if (str_contains($url, '?')) {
+                $url .= '&messageReplyOption=REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD';
+            } else {
+                $url .= '?messageReplyOption=REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD';
+            }
         }
 
         try {
